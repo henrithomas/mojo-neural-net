@@ -9,6 +9,7 @@ alias type = DType.float32
 alias simdwidth = simdwidthof[type]()
 alias mu: Float32 = 0.01
 alias mini_batch_size: Int = 50
+alias epochs: Int = 1
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
@@ -72,12 +73,25 @@ fn sigmoid(z: Tensor[type]) -> Tensor[type]:
     
     return activations
 
-fn sigmoid_prime(z: Tensor[type]) -> Tensor[type]:
+# sigmoid(z) * (1 - sigmoid(z))
+fn sigmoid_prime(a: Tensor[type]) raises -> Tensor[type]:
+    var sigma_prime: Tensor[type] = Tensor[type](a.shape()) 
+    sigma_prime = a * (1 - a)
+    return sigma_prime
+
+fn sigmoid_prime_full(z: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](z.shape()) 
+    let sigmoid_z = sigmoid(z)
+    sigma_prime = sigmoid_z * (1 - sigmoid_z)
     return sigma_prime
 
 fn feed_forward():
     return
+
+fn output_error(a_L: Tensor[type], expected: Tensor[type], a_L_prime: Tensor[type]) raises -> Tensor[type]:
+    var error_L: Tensor[type] = Tensor[type](a_L.shape())
+    error_L = (a_L - expected) * a_L_prime
+    return error_L
 
 # input activations
 # feed forward
@@ -98,7 +112,8 @@ fn main() raises:
 
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
-    
+
+
     # var X: Tensor[type] = Tensor[type](X_specs)
     var X: Tensor[type] = randn[type](X_specs, 0, 1)
 
@@ -107,13 +122,21 @@ fn main() raises:
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
+    let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
     # print(str(X))
     # print(str(W_l))
 
-    for i in range(1):
+    @unroll(epochs)
+    for i in range(epochs):
         var z_l = matmul(X, W_l) + B_l
         var a_l = sigmoid(z_l)
+        var a_l_prime = sigmoid_prime(a_l)
+
         var z_L = matmul(a_l, W_L) + B_L
         var a_L = sigmoid(z_L)
+        var a_L_prime = sigmoid_prime(a_L)
+
+        var d_L = output_error(a_L, fake_expected, a_L_prime)
+        
 
     print("done")
