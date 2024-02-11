@@ -9,7 +9,7 @@ alias type = DType.float32
 alias simdwidth = simdwidthof[type]()
 alias mu: Float32 = 0.01
 alias mini_batch_size: Int = 50
-alias epochs: Int = 1
+alias epochs: Int = 100
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
@@ -24,6 +24,11 @@ fn matmul_simple(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
                 t_mul[Index(i, k)] += t1[Index(i,j)] * t2[Index(j,k)]
                 
     return t_mul   
+
+fn transpose_simple(t: Tensor[type]) -> Tensor[type]:
+    var t_transpose: Tensor[type] = Tensor[type](TensorShape(t.shape()[1], t.shape()[0]))
+
+    return t_transpose
 
 fn matmul(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
     var t_mul: Tensor[type] = Tensor[type](TensorShape(t1.shape()[0],t2.shape()[1]))
@@ -76,13 +81,17 @@ fn sigmoid(z: Tensor[type]) -> Tensor[type]:
 # sigmoid(z) * (1 - sigmoid(z))
 fn sigmoid_prime(a: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](a.shape()) 
+
     sigma_prime = a * (1 - a)
+
     return sigma_prime
 
 fn sigmoid_prime_full(z: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](z.shape()) 
     let sigmoid_z = sigmoid(z)
+
     sigma_prime = sigmoid_z * (1 - sigmoid_z)
+
     return sigma_prime
 
 fn feed_forward():
@@ -90,8 +99,18 @@ fn feed_forward():
 
 fn output_error(a_L: Tensor[type], expected: Tensor[type], a_L_prime: Tensor[type]) raises -> Tensor[type]:
     var error_L: Tensor[type] = Tensor[type](a_L.shape())
+
     error_L = (a_L - expected) * a_L_prime
+
     return error_L
+
+fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) raises -> Tensor[type]:
+    var error_l: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, hidden_layer_size))
+    var fake_w_transpose: Tensor[type] = randn[type](TensorSpec(type, w.shape()[1], w.shape()[0]), 0, 1)
+
+    error_l = a_prime * matmul(error, fake_w_transpose)
+
+    return error_l
 
 # input activations
 # feed forward
@@ -123,6 +142,7 @@ fn main() raises:
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
     let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
+ 
     # print(str(X))
     # print(str(W_l))
 
@@ -137,6 +157,7 @@ fn main() raises:
         var a_L_prime = sigmoid_prime(a_L)
 
         var d_L = output_error(a_L, fake_expected, a_L_prime)
+        var d_l = backpropagation(W_L, d_L, a_l_prime)
         
 
     print("done")
