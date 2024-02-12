@@ -112,14 +112,23 @@ fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) 
 
     return error_l
 
+fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
+    let fake_a_transpose: Tensor[type] = randn[type](TensorSpec(type, a_prev.shape()[1], a_prev.shape()[0]))
+    
+    w = w - mu * matmul(fake_a_transpose, error)
+
+fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
+    b = b - mu * error
+
 # input activations
 # feed forward
 # output error
 # backpropagation of error
 # gradient descent to update weights
 fn main() raises:
-    print("learning rate:", mu, "error target", error_target)
-    print("mini-batch size", mini_batch_size, "hidden layer size:", hidden_layer_size)
+    print("learning rate: ", mu, " error target: ", error_target)
+    print("mini-batch size: ", mini_batch_size, " number of epochs: ")
+    print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
 
     let X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
 
@@ -132,8 +141,6 @@ fn main() raises:
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-
-    # var X: Tensor[type] = Tensor[type](X_specs)
     var X: Tensor[type] = randn[type](X_specs, 0, 1)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
@@ -143,11 +150,10 @@ fn main() raises:
 
     let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
  
-    # print(str(X))
-    # print(str(W_l))
-
-    @unroll(epochs)
+    @unroll(mini_batch_size)
     for i in range(epochs):
+        print("epoch ", (i + 1))
+
         var z_l = matmul(X, W_l) + B_l
         var a_l = sigmoid(z_l)
         var a_l_prime = sigmoid_prime(a_l)
@@ -159,5 +165,11 @@ fn main() raises:
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
         
+        update_weights(W_L, d_L, a_l)
+        update_weights(W_l, d_l, X)
+        update_biases(B_L, d_L)
+        update_biases(B_l, d_l)
+
+        # calculate batch error
 
     print("done")
