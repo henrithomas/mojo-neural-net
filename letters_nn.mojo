@@ -8,8 +8,8 @@ from math import exp
 alias type = DType.float32
 alias simdwidth = simdwidthof[type]()
 alias mu: Float32 = 0.01
-alias mini_batch_size: Int = 50
-alias epochs: Int = 100
+alias mini_batch_size: Int = 1
+alias epochs: Int = 1
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
@@ -125,10 +125,26 @@ fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
 # output error
 # backpropagation of error
 # gradient descent to update weights
+
+"""
+T(19),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
+I(8),5,12,3,7,2,10,5,5,4,13,3,9,2,8,4,10
+D(3),4,11,6,8,6,10,6,2,6,10,3,7,3,7,3,9
+N(13),7,11,6,6,3,5,9,4,6,4,4,10,6,10,2,8
+"""
 fn main() raises:
     print("learning rate: ", mu, " error target: ", error_target)
-    print("mini-batch size: ", mini_batch_size, " number of epochs: ")
+    print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
+
+    var output_check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
+
+    for i in range(output_check.shape()[0]):
+        for j in range(output_check.shape()[1]):
+            if(i == j):
+                output_check[Index(i,j)] = 0.999
+            else:
+                output_check[Index(i,j)] = 0.001
 
     let X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
 
@@ -141,14 +157,19 @@ fn main() raises:
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-    var X: Tensor[type] = randn[type](X_specs, 0, 1)
+    # TESTING ONLY
+    # T(19),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
+    var X: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, input_layer_size),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8)# randn[type](X_specs, 0, 1)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
     var W_L: Tensor[type] = randn[type](W_L_specs, 0, 1)
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
-    let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
+    # TESTING ONLY
+    var fake_expected: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, output_layer_size))# randn[type](a_L_specs, 1,1)
+    for i in range(fake_expected.num_elements()):
+        fake_expected[i] = output_check[Index(19,i)]
  
     @unroll(mini_batch_size)
     for i in range(epochs):
@@ -161,7 +182,6 @@ fn main() raises:
         var z_L = matmul(a_l, W_L) + B_L
         var a_L = sigmoid(z_L)
         var a_L_prime = sigmoid_prime(a_L)
-
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
         
