@@ -4,6 +4,7 @@ from utils.index import Index
 from random import randn
 from pathlib import path
 from math import exp
+from python import Python
 
 alias type = DType.float32
 alias simdwidth = simdwidthof[type]()
@@ -120,6 +121,17 @@ fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[typ
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
     b = b - mu * error
 
+def get_data():
+    # import numpy, and use python to read csv into numpy array or maybe just a py list
+    # separate expected letter from output values into two lists
+    # add values from python into mojo datastructures
+    # return mojo datastructures for use
+    let pycsv = Python.import_module("csv")
+    let np = Python.import_module("numpy")
+    
+    test = np.genfromtxt('letter-data.csv')
+    print(test)
+    
 # input activations
 # feed forward
 # output error
@@ -127,15 +139,17 @@ fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
 # gradient descent to update weights
 
 """
-T(19),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
-I(8),5,12,3,7,2,10,5,5,4,13,3,9,2,8,4,10
-D(3),4,11,6,8,6,10,6,2,6,10,3,7,3,7,3,9
-N(13),7,11,6,6,3,5,9,4,6,4,4,10,6,10,2,8
+T,2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
+I,5,12,3,7,2,10,5,5,4,13,3,9,2,8,4,10
+D,4,11,6,8,6,10,6,2,6,10,3,7,3,7,3,9
+N,7,11,6,6,3,5,9,4,6,4,4,10,6,10,2,8
 """
 fn main() raises:
     print("learning rate: ", mu, " error target: ", error_target)
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
+
+    # _ = get_data()
 
     var output_check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
 
@@ -158,7 +172,7 @@ fn main() raises:
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
     # TESTING ONLY
-    # T(19),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
+    # T: 2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
     var X: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, input_layer_size),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8)# randn[type](X_specs, 0, 1)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
@@ -184,7 +198,9 @@ fn main() raises:
         var a_L_prime = sigmoid_prime(a_L)
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
-        
+
+        print(str(d_L))
+
         update_weights(W_L, d_L, a_l)
         update_weights(W_l, d_l, X)
         update_biases(B_L, d_L)
