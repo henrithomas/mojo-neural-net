@@ -199,6 +199,7 @@ fn main() raises:
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
+        print(str(a_L))
         print(str(d_L))
 
         update_weights(W_L, d_L, a_l)
