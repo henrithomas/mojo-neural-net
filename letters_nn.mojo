@@ -3,11 +3,14 @@ from algorithm import parallelize, vectorize
 from utils.index import Index
 from random import randn
 from pathlib import path
-from math import exp
+from math import exp, pow, rsqrt
 
 alias type = DType.float32
 alias simdwidth = simdwidthof[type]()
 alias mu: Float32 = 0.01
+alias beta1: Float32 = 0.9
+alias beta2: Float32 = 0.99
+alias epsilon: Float32 = 0.00000001
 alias mini_batch_size: Int = 50
 alias epochs: Int = 100
 alias error_target: Float32 = .1
@@ -149,6 +152,14 @@ fn main() raises:
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
     let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
+
+    # EMA means
+    var d_L_m = Tensor[type](a_L_specs)
+    var d_l_m = Tensor[type](a_l_specs)
+
+    # EMA variances
+    var d_L_v = Tensor[type](a_L_specs)
+    var d_l_v = Tensor[type](a_l_specs)
  
     @unroll(mini_batch_size)
     for i in range(epochs):
@@ -164,11 +175,26 @@ fn main() raises:
 
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
+
+        d_L_m = beta1 * d_L_m + (1-beta1) * d_L
+        d_l_m = beta1 * d_l_m + (1-beta1) * d_l
+
+        d_L_v = beta2 * d_L_v + (1-beta2) * d_L * d_L
+        d_l_v = beta2 * d_l_v + (1-beta2) * d_l * d_l
+
+        var d_L_mhat = d_L_m / (1 - pow(beta1, i))
+        var d_l_mhat = d_l_m / (1 - pow(beta1, i))
+
+        var d_L_vhat = d_L_v / (1 - pow(beta2, i))
+        var d_l_vhat = d_l_v / (1 - pow(beta2, i))
+
+        var L_update = d_L_mhat / (d_L_vhat + epsilon)
+        var l_update = d_l_mhat / (d_l_vhat + epsilon)
         
-        update_weights(W_L, d_L, a_l)
-        update_weights(W_l, d_l, X)
-        update_biases(B_L, d_L)
-        update_biases(B_l, d_l)
+        update_weights(W_L, L_update, a_l)
+        update_weights(W_l, l_update, X)
+        update_biases(B_L, L_update)
+        update_biases(B_l, l_update)
 
         # calculate batch error
 
