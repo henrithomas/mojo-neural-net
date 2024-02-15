@@ -1,20 +1,24 @@
 from tensor import Tensor, TensorSpec, TensorShape
 from algorithm import parallelize, vectorize
 from utils.index import Index
-from random import randn
+from random import randn, random_si64
 from pathlib import path
 from math import exp
 from python import Python
 
-alias type = DType.float32
+alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
-alias mu: Float32 = 0.01
-alias mini_batch_size: Int = 1
+alias mu: Float64 = 0.01
+alias mini_batch_size: Int = 50
 alias epochs: Int = 1
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
 alias output_layer_size: Int = 26
+alias data_width: Int = 17
+alias data_size: Int = 20000
+alias training_size: Int = 16000
+alias validation_size: Int = 4000
 
 fn matmul_simple(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
     var t_mul: Tensor[type] = Tensor[type](TensorShape(t1.shape()[0],t2.shape()[1]))
@@ -50,8 +54,8 @@ fn matmul(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
     return t_mul 
 
 
-fn dot(t1: Tensor[type], t2: Tensor[type]) -> Float32:
-    var vec_dot: Float32 = 0.0
+fn dot(t1: Tensor[type], t2: Tensor[type]) -> Float64:
+    var vec_dot: Float64 = 0.0
     var temp_vec: Tensor[type] = Tensor[type](t1.shape())
     var sum_vec: Tensor[type] = Tensor[type](simdwidth)
     var sum_simd = SIMD[type, simdwidth](0.0)
@@ -121,35 +125,34 @@ fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[typ
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
     b = b - mu * error
 
+fn get_inidices(inout indices: Tensor[DType.int64]):
+    for i in range(mini_batch_size):
+        indices[Index(0,i)] = random_si64(0,1000)
+
 def get_data():
-    # import numpy, and use python to read csv into numpy array or maybe just a py list
-    # separate expected letter from output values into two lists
-    # add values from python into mojo datastructures
-    # return mojo datastructures for use
-    let pycsv = Python.import_module("csv")
+    var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
     let np = Python.import_module("numpy")
     
-    test = np.genfromtxt('letter-data.csv')
-    print(test)
-    
+    test = np.genfromtxt("letters-data-normalized.txt", np.float64)
+    print(test.shape, test[2])
+
+    for i in range(data_size):
+        for j in range(data_width):
+            data_input[Index(i,j)] = test[i][j].to_float64()
+    print(str(data_input))
+
+
 # input activations
 # feed forward
 # output error
 # backpropagation of error
 # gradient descent to update weights
-
-"""
-T,2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
-I,5,12,3,7,2,10,5,5,4,13,3,9,2,8,4,10
-D,4,11,6,8,6,10,6,2,6,10,3,7,3,7,3,9
-N,7,11,6,6,3,5,9,4,6,4,4,10,6,10,2,8
-"""
 fn main() raises:
     print("learning rate: ", mu, " error target: ", error_target)
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
 
-    # _ = get_data()
+    _ = get_data()
 
     var output_check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
 
@@ -171,19 +174,21 @@ fn main() raises:
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-    # TESTING ONLY
-    # T: 2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8
-    var X: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, input_layer_size),2,8,3,5,1,8,13,0,6,6,10,8,0,8,0,8)# randn[type](X_specs, 0, 1)
+    var X: Tensor[type] = randn[type](X_specs, 0, 1) # Tensor[type](TensorShape(mini_batch_size, input_layer_size)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
     var W_L: Tensor[type] = randn[type](W_L_specs, 0, 1)
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
+    var test_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
+    get_inidices(test_indices)
+    print(test_indices)
+
     # TESTING ONLY
-    var fake_expected: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, output_layer_size))# randn[type](a_L_specs, 1,1)
-    for i in range(fake_expected.num_elements()):
-        fake_expected[i] = output_check[Index(19,i)]
+    var fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1) # Tensor[type](TensorShape(mini_batch_size, output_layer_size))# 
+    # for i in range(fake_expected.num_elements()):
+    #     fake_expected[i] = output_check[Index(19,i)]
  
     @unroll(mini_batch_size)
     for i in range(epochs):
