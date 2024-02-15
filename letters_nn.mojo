@@ -182,14 +182,19 @@ fn main() raises:
         d_L_v = beta2 * d_L_v + (1-beta2) * d_L * d_L
         d_l_v = beta2 * d_l_v + (1-beta2) * d_l * d_l
 
-        var d_L_mhat = d_L_m / (1 - pow(beta1, i))
-        var d_l_mhat = d_l_m / (1 - pow(beta1, i))
+        var d_L_mhat = d_L_m / (1 - pow(beta1, i+1))
+        var d_l_mhat = d_l_m / (1 - pow(beta1, i+1))
 
-        var d_L_vhat = d_L_v / (1 - pow(beta2, i))
-        var d_l_vhat = d_l_v / (1 - pow(beta2, i))
+        var d_L_vhat = d_L_v / (1 - pow(beta2, i+1))
+        var d_l_vhat = d_l_v / (1 - pow(beta2, i+1))
 
         var L_update = d_L_mhat / (d_L_vhat + epsilon)
         var l_update = d_l_mhat / (d_l_vhat + epsilon)
+
+        if i == 99:
+            print(d_L_mhat)
+            print(str(a_L))
+            print(str(L_update))
         
         update_weights(W_L, L_update, a_l)
         update_weights(W_l, l_update, X)
