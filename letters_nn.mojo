@@ -30,8 +30,12 @@ fn matmul_simple(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
                 
     return t_mul   
 
-fn transpose_simple(t: Tensor[type]) -> Tensor[type]:
+fn transpose(t: Tensor[type]) -> Tensor[type]:
     var t_transpose: Tensor[type] = Tensor[type](TensorShape(t.shape()[1], t.shape()[0]))
+    
+    for i in range(t.shape()[0]):
+        for j in range(t.shape()[1]):
+            t_transpose[Index(j,i)] = t[Index(i,j)]
 
     return t_transpose
 
@@ -111,16 +115,16 @@ fn output_error(a_L: Tensor[type], expected: Tensor[type], a_L_prime: Tensor[typ
 
 fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) raises -> Tensor[type]:
     var error_l: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, hidden_layer_size))
-    var fake_w_transpose: Tensor[type] = randn[type](TensorSpec(type, w.shape()[1], w.shape()[0]), 0, 1)
+    var w_transpose: Tensor[type] = transpose(w) 
 
-    error_l = a_prime * matmul(error, fake_w_transpose)
+    error_l = a_prime * matmul(error, w_transpose)
 
     return error_l
 
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
-    let fake_a_transpose: Tensor[type] = randn[type](TensorSpec(type, a_prev.shape()[1], a_prev.shape()[0]))
+    let a_transpose: Tensor[type] = transpose(a_prev) 
     
-    w = w - mu * matmul(fake_a_transpose, error)
+    w = w - mu * matmul(a_transpose, error)
 
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
     b = b - mu * error
@@ -129,7 +133,7 @@ fn get_inidices(inout indices: Tensor[DType.int64]):
     for i in range(mini_batch_size):
         indices[Index(0,i)] = random_si64(0,1000)
 
-def get_data():
+def get_data() -> Tensor[type]:
     var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
     let np = Python.import_module("numpy")
     
@@ -139,8 +143,19 @@ def get_data():
     for i in range(data_size):
         for j in range(data_width):
             data_input[Index(i,j)] = test[i][j].to_float64()
-    print(str(data_input))
+    return data_input 
 
+fn get_validation() -> Tensor[type]:
+    var check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
+
+    for i in range(check.shape()[0]):
+        for j in range(check.shape()[1]):
+            if(i == j):
+                check[Index(i,j)] = 0.999
+            else:
+                check[Index(i,j)] = 0.001
+    
+    return check
 
 # input activations
 # feed forward
@@ -151,18 +166,11 @@ fn main() raises:
     print("learning rate: ", mu, " error target: ", error_target)
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
+    print("\n\nloading data...")
+    let full_data: Tensor[type] = get_data()
+    let output_check: Tensor[type] = get_validation() 
 
-    _ = get_data()
-
-    var output_check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
-
-    for i in range(output_check.shape()[0]):
-        for j in range(output_check.shape()[1]):
-            if(i == j):
-                output_check[Index(i,j)] = 0.999
-            else:
-                output_check[Index(i,j)] = 0.001
-
+    print("\n\nconfiguring network...")
     let X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
 
     let W_l_specs = TensorSpec(type, input_layer_size, hidden_layer_size)
@@ -190,6 +198,7 @@ fn main() raises:
     # for i in range(fake_expected.num_elements()):
     #     fake_expected[i] = output_check[Index(19,i)]
  
+    print("\n\ntraining...")
     @unroll(mini_batch_size)
     for i in range(epochs):
         print("epoch ", (i + 1))
@@ -204,8 +213,8 @@ fn main() raises:
         var d_L = output_error(a_L, fake_expected, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
-        print(str(a_L))
-        print(str(d_L))
+        # print(str(a_L))
+        # print(str(d_L))
 
         update_weights(W_L, d_L, a_l)
         update_weights(W_l, d_l, X)
