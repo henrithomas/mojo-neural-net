@@ -1,7 +1,7 @@
 from tensor import Tensor, TensorSpec, TensorShape
 from algorithm import parallelize, vectorize
 from utils.index import Index
-from random import randn, random_si64
+from random import randn, random_si64, seed
 from pathlib import path
 from math import exp
 from python import Python
@@ -10,7 +10,7 @@ alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
 alias mu: Float64 = 0.01
 alias mini_batch_size: Int = 50
-alias epochs: Int = 1
+alias epochs: Int = 250
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
@@ -131,7 +131,7 @@ fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
 
 fn get_inidices(inout indices: Tensor[DType.int64]):
     for i in range(mini_batch_size):
-        indices[Index(0,i)] = random_si64(0,1000)
+        indices[Index(0,i)] = random_si64(0,training_size)
 
 def get_data() -> Tensor[type]:
     var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
@@ -157,12 +157,29 @@ fn get_validation() -> Tensor[type]:
     
     return check
 
+fn set_batch_and_validation(indices: Tensor[DType.int64], data: Tensor[type], checker: Tensor[type], inout x: Tensor[type], inout v: Tensor[type]):
+    # indices num elements = mini_batch_size
+    var v_letter: Int 
+    for i in range(indices.num_elements()):
+        for j in range(input_layer_size):
+            x[Index(i,j)] = data[Index(indices[i], j + 1)]
+
+        for k in range(output_layer_size):
+            v_letter = data[Index(indices[i],0)].to_int()
+            v[Index(i,k)] = checker[Index(v_letter,k)]
+
+    # print(str(x))
+    # print(str(v))
+
+    pass
+
 # input activations
 # feed forward
 # output error
 # backpropagation of error
 # gradient descent to update weights
 fn main() raises:
+    seed()
     print("learning rate: ", mu, " error target: ", error_target)
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
@@ -182,16 +199,18 @@ fn main() raises:
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-    var X: Tensor[type] = randn[type](X_specs, 0, 1) # Tensor[type](TensorShape(mini_batch_size, input_layer_size)
+    var batch_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
+    var X: Tensor[type] = Tensor[type](X_specs)
+    var validation: Tensor[type] = Tensor[type](a_L_specs)
+    # get_inidices(batch_indices)
+    # print(batch_indices)
+    # set_batch_and_validation(batch_indices)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
     var W_L: Tensor[type] = randn[type](W_L_specs, 0, 1)
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
-    var test_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
-    get_inidices(test_indices)
-    print(test_indices)
 
     # TESTING ONLY
     var fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1) # Tensor[type](TensorShape(mini_batch_size, output_layer_size))# 
@@ -203,6 +222,9 @@ fn main() raises:
     for i in range(epochs):
         print("epoch ", (i + 1))
 
+        get_inidices(batch_indices)
+        set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
+
         var z_l = matmul(X, W_l) + B_l
         var a_l = sigmoid(z_l)
         var a_l_prime = sigmoid_prime(a_l)
@@ -210,10 +232,10 @@ fn main() raises:
         var z_L = matmul(a_l, W_L) + B_L
         var a_L = sigmoid(z_L)
         var a_L_prime = sigmoid_prime(a_L)
-        var d_L = output_error(a_L, fake_expected, a_L_prime)
+        var d_L = output_error(a_L, validation, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
-        # print(str(a_L))
+        # print(str(d_L[0]), str(d_L[15]), str(d_L[35]),)
         # print(str(d_L))
 
         update_weights(W_L, d_L, a_l)
@@ -222,5 +244,7 @@ fn main() raises:
         update_biases(B_l, d_l)
 
         # calculate batch error
+
+        seed()
 
     print("done")
