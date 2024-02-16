@@ -10,7 +10,7 @@ alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
 alias mu: Float64 = 0.01
 alias mini_batch_size: Int = 50
-alias epochs: Int = 250
+alias epochs: Int = 1
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
@@ -129,6 +129,36 @@ fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[typ
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
     b = b - mu * error
 
+fn softmax(inout a: Tensor[type]):
+    var soft: Tensor[type] = Tensor[type](a.shape())
+
+    @parameter
+    fn soft_exp[simd_width: Int](idx: Int):
+        a.simd_store[simd_width](idx, exp[type, simd_width](a.simd_load[simd_width](idx)))
+
+    vectorize[simdwidth, soft_exp](a.num_elements())
+
+    # @parameter
+    # fn softmax_tasks(row: Int):
+    #     var row_sum: Float64 = 0.0
+
+    #     for j in range(a.shape()[1]):
+    #         row_sum += a[Index(row,j)]    
+    #     for k in range(a.shape()[1]):
+    #         a[Index(row,k)] /= row_sum
+
+    # @parameter
+    # fn softmax_tasks_parallel():
+    #     parallelize[softmax_tasks](a.shape()[0], a.shape()[0])
+
+    for i in range(a.shape()[0]):
+        var row_sum: Float64 = 0.0
+
+        for j in range(a.shape()[1]):
+            row_sum += a[Index(i,j)]    
+        for k in range(a.shape()[1]):
+            a[Index(i,k)] /= row_sum 
+    
 fn get_inidices(inout indices: Tensor[DType.int64]):
     for i in range(mini_batch_size):
         indices[Index(0,i)] = random_si64(0,training_size)
@@ -184,6 +214,7 @@ fn main() raises:
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
     print("\n\nloading data...")
+    var epoch_error: Float64 = 0.0
     let full_data: Tensor[type] = get_data()
     let output_check: Tensor[type] = get_validation() 
 
@@ -235,7 +266,7 @@ fn main() raises:
         var d_L = output_error(a_L, validation, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
-        # print(str(d_L[0]), str(d_L[15]), str(d_L[35]),)
+        print(str(d_L[0]), str(d_L[15]), str(d_L[35]),)
         # print(str(d_L))
 
         update_weights(W_L, d_L, a_l)
@@ -244,6 +275,7 @@ fn main() raises:
         update_biases(B_l, d_l)
 
         # calculate batch error
+        softmax(a_L)
 
         seed()
 
