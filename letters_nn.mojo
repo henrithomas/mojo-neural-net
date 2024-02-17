@@ -81,6 +81,19 @@ fn sigmoid(z: Tensor[type]) -> Tensor[type]:
     
     return activations
 
+# 1/sqrt(x + epsilon)
+fn inv_sqrt(z: Tensor[type]) -> Tensor[type]:
+    var second_moments: Tensor[type] = Tensor[type](z.shape())
+
+    @parameter
+    fn compute_rsqrt[simd_width: Int](idx: Int):
+        second_moments.simd_store[simd_width](idx, rsqrt[type, simd_width](epsilon + z.simd_load[simd_width](idx)))
+    
+    vectorize[simdwidth, compute_rsqrt](second_moments.num_elements())
+    
+    return second_moments
+
+
 # sigmoid(z) * (1 - sigmoid(z))
 fn sigmoid_prime(a: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](a.shape()) 
@@ -188,8 +201,8 @@ fn main() raises:
         var d_L_vhat = d_L_v / (1 - pow(beta2, i+1))
         var d_l_vhat = d_l_v / (1 - pow(beta2, i+1))
 
-        var L_update = d_L_mhat / (d_L_vhat + epsilon)
-        var l_update = d_l_mhat / (d_l_vhat + epsilon)
+        var L_update = d_L_mhat * inv_sqrt(d_L_vhat)
+        var l_update = d_l_mhat * inv_sqrt(d_l_vhat)
 
         if i == 99:
             print(d_L_mhat)
