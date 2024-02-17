@@ -1,22 +1,27 @@
 from tensor import Tensor, TensorSpec, TensorShape
 from algorithm import parallelize, vectorize
 from utils.index import Index
-from random import randn
+from random import randn, random_si64, seed
 from pathlib import path
 from math import exp, pow, rsqrt
+from python import Python
 
-alias type = DType.float32
+alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
-alias mu: Float32 = 0.01
-alias beta1: Float32 = 0.9
-alias beta2: Float32 = 0.99
-alias epsilon: Float32 = 0.00000001
+alias mu: Float64 = 0.01
+alias beta1: Float64 = 0.9
+alias beta2: Float64 = 0.99
+alias epsilon: Float64 = 0.00000001
 alias mini_batch_size: Int = 50
-alias epochs: Int = 100
+alias epochs: Int = 1
 alias error_target: Float32 = .1
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 52
 alias output_layer_size: Int = 26
+alias data_width: Int = 17
+alias data_size: Int = 20000
+alias training_size: Int = 16000
+alias validation_size: Int = 4000
 
 fn matmul_simple(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
     var t_mul: Tensor[type] = Tensor[type](TensorShape(t1.shape()[0],t2.shape()[1]))
@@ -28,8 +33,12 @@ fn matmul_simple(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
                 
     return t_mul   
 
-fn transpose_simple(t: Tensor[type]) -> Tensor[type]:
+fn transpose(t: Tensor[type]) -> Tensor[type]:
     var t_transpose: Tensor[type] = Tensor[type](TensorShape(t.shape()[1], t.shape()[0]))
+    
+    for i in range(t.shape()[0]):
+        for j in range(t.shape()[1]):
+            t_transpose[Index(j,i)] = t[Index(i,j)]
 
     return t_transpose
 
@@ -52,8 +61,8 @@ fn matmul(t1: Tensor[type], t2: Tensor[type]) -> Tensor[type]:
     return t_mul 
 
 
-fn dot(t1: Tensor[type], t2: Tensor[type]) -> Float32:
-    var vec_dot: Float32 = 0.0
+fn dot(t1: Tensor[type], t2: Tensor[type]) -> Float64:
+    var vec_dot: Float64 = 0.0
     var temp_vec: Tensor[type] = Tensor[type](t1.shape())
     var sum_vec: Tensor[type] = Tensor[type](simdwidth)
     var sum_simd = SIMD[type, simdwidth](0.0)
@@ -122,19 +131,93 @@ fn output_error(a_L: Tensor[type], expected: Tensor[type], a_L_prime: Tensor[typ
 
 fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) raises -> Tensor[type]:
     var error_l: Tensor[type] = Tensor[type](TensorShape(mini_batch_size, hidden_layer_size))
-    var fake_w_transpose: Tensor[type] = randn[type](TensorSpec(type, w.shape()[1], w.shape()[0]), 0, 1)
+    var w_transpose: Tensor[type] = transpose(w) 
 
-    error_l = a_prime * matmul(error, fake_w_transpose)
+    error_l = a_prime * matmul(error, w_transpose)
 
     return error_l
 
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
-    let fake_a_transpose: Tensor[type] = randn[type](TensorSpec(type, a_prev.shape()[1], a_prev.shape()[0]))
+    let a_transpose: Tensor[type] = transpose(a_prev) 
     
-    w = w - mu * matmul(fake_a_transpose, error)
+    w = w - mu * matmul(a_transpose, error)
 
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
     b = b - mu * error
+
+fn softmax(inout a: Tensor[type]):
+    var soft: Tensor[type] = Tensor[type](a.shape())
+
+    @parameter
+    fn soft_exp[simd_width: Int](idx: Int):
+        a.simd_store[simd_width](idx, exp[type, simd_width](a.simd_load[simd_width](idx)))
+
+    vectorize[simdwidth, soft_exp](a.num_elements())
+
+    # @parameter
+    # fn softmax_tasks(row: Int):
+    #     var row_sum: Float64 = 0.0
+
+    #     for j in range(a.shape()[1]):
+    #         row_sum += a[Index(row,j)]    
+    #     for k in range(a.shape()[1]):
+    #         a[Index(row,k)] /= row_sum
+
+    # @parameter
+    # fn softmax_tasks_parallel():
+    #     parallelize[softmax_tasks](a.shape()[0], a.shape()[0])
+
+    for i in range(a.shape()[0]):
+        var row_sum: Float64 = 0.0
+
+        for j in range(a.shape()[1]):
+            row_sum += a[Index(i,j)]    
+        for k in range(a.shape()[1]):
+            a[Index(i,k)] /= row_sum 
+    
+fn get_inidices(inout indices: Tensor[DType.int64]):
+    for i in range(mini_batch_size):
+        indices[Index(0,i)] = random_si64(0,training_size)
+
+def get_data() -> Tensor[type]:
+    var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
+    let np = Python.import_module("numpy")
+    
+    test = np.genfromtxt("letters-data-normalized.txt", np.float64)
+    print(test.shape, test[2])
+
+    for i in range(data_size):
+        for j in range(data_width):
+            data_input[Index(i,j)] = test[i][j].to_float64()
+    return data_input 
+
+fn get_validation() -> Tensor[type]:
+    var check = Tensor[type](TensorSpec(type, output_layer_size, output_layer_size))
+
+    for i in range(check.shape()[0]):
+        for j in range(check.shape()[1]):
+            if(i == j):
+                check[Index(i,j)] = 0.999
+            else:
+                check[Index(i,j)] = 0.001
+    
+    return check
+
+fn set_batch_and_validation(indices: Tensor[DType.int64], data: Tensor[type], checker: Tensor[type], inout x: Tensor[type], inout v: Tensor[type]):
+    # indices num elements = mini_batch_size
+    var v_letter: Int 
+    for i in range(indices.num_elements()):
+        for j in range(input_layer_size):
+            x[Index(i,j)] = data[Index(indices[i], j + 1)]
+
+        for k in range(output_layer_size):
+            v_letter = data[Index(indices[i],0)].to_int()
+            v[Index(i,k)] = checker[Index(v_letter,k)]
+
+    # print(str(x))
+    # print(str(v))
+
+    pass
 
 # input activations
 # feed forward
@@ -142,10 +225,16 @@ fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
 # backpropagation of error
 # gradient descent to update weights
 fn main() raises:
+    seed()
     print("learning rate: ", mu, " error target: ", error_target)
-    print("mini-batch size: ", mini_batch_size, " number of epochs: ")
+    print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
+    print("\n\nloading data...")
+    var epoch_error: Float64 = 0.0
+    let full_data: Tensor[type] = get_data()
+    let output_check: Tensor[type] = get_validation() 
 
+    print("\n\nconfiguring network...")
     let X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
 
     let W_l_specs = TensorSpec(type, input_layer_size, hidden_layer_size)
@@ -157,7 +246,12 @@ fn main() raises:
     let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
     let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-    var X: Tensor[type] = randn[type](X_specs, 0, 1)
+    var batch_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
+    var X: Tensor[type] = Tensor[type](X_specs)
+    var validation: Tensor[type] = Tensor[type](a_L_specs)
+    # get_inidices(batch_indices)
+    # print(batch_indices)
+    # set_batch_and_validation(batch_indices)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
     var W_L: Tensor[type] = randn[type](W_L_specs, 0, 1)
@@ -174,9 +268,13 @@ fn main() raises:
     var d_L_v = Tensor[type](a_L_specs)
     var d_l_v = Tensor[type](a_l_specs)
  
+    print("\n\ntraining...")
     @unroll(mini_batch_size)
     for i in range(epochs):
         print("epoch ", (i + 1))
+
+        get_inidices(batch_indices)
+        set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
 
         var z_l = matmul(X, W_l) + B_l
         var a_l = sigmoid(z_l)
@@ -185,8 +283,7 @@ fn main() raises:
         var z_L = matmul(a_l, W_L) + B_L
         var a_L = sigmoid(z_L)
         var a_L_prime = sigmoid_prime(a_L)
-
-        var d_L = output_error(a_L, fake_expected, a_L_prime)
+        var d_L = output_error(a_L, validation, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
         d_L_m = beta1 * d_L_m + (1-beta1) * d_L
@@ -215,5 +312,8 @@ fn main() raises:
         update_biases(B_l, l_update)
 
         # calculate batch error
+        softmax(a_L)
+
+        seed()
 
     print("done")
