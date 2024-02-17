@@ -137,6 +137,29 @@ fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) 
 
     return error_l
 
+fn adamopt(inout d_L: Tensor[type], inout d_l: Tensor[type], inout d_L_m: Tensor[type], inout d_l_m: Tensor[type], inout d_L_v: Tensor[type], inout d_l_v: Tensor[type], epoch: Int) raises:
+    d_L_m = beta1 * d_L_m + (1-beta1) * d_L
+    d_l_m = beta1 * d_l_m + (1-beta1) * d_l
+
+    d_L_v = beta2 * d_L_v + (1-beta2) * d_L * d_L
+    d_l_v = beta2 * d_l_v + (1-beta2) * d_l * d_l
+
+    var d_L_mhat = d_L_m / (1 - pow(beta1, epoch+1))
+    var d_l_mhat = d_l_m / (1 - pow(beta1, epoch+1))
+
+    var d_L_vhat = d_L_v / (1 - pow(beta2, epoch+1))
+    var d_l_vhat = d_l_v / (1 - pow(beta2, epoch+1))
+
+    var L_update = d_L_mhat * inv_sqrt(d_L_vhat)
+    var l_update = d_l_mhat * inv_sqrt(d_l_vhat)
+
+    d_L = L_update
+    d_l = l_update
+    # if epoch == 99:
+    #     print(d_L_mhat)
+    #     print(str(a_L))
+    #     print(str(L_update))
+
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
     let a_transpose: Tensor[type] = transpose(a_prev) 
     
@@ -230,6 +253,8 @@ fn main() raises:
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
     print("\n\nloading data...")
+
+    let adam_optimize: Bool = True 
     var epoch_error: Float64 = 0.0
     let full_data: Tensor[type] = get_data()
     let output_check: Tensor[type] = get_validation() 
@@ -269,6 +294,8 @@ fn main() raises:
     var d_l_v = Tensor[type](a_l_specs)
  
     print("\n\ntraining...")
+    if adam_optimize: print("using adam optimization")
+
     @unroll(mini_batch_size)
     for i in range(epochs):
         print("epoch ", (i + 1))
@@ -286,30 +313,13 @@ fn main() raises:
         var d_L = output_error(a_L, validation, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
-        d_L_m = beta1 * d_L_m + (1-beta1) * d_L
-        d_l_m = beta1 * d_l_m + (1-beta1) * d_l
-
-        d_L_v = beta2 * d_L_v + (1-beta2) * d_L * d_L
-        d_l_v = beta2 * d_l_v + (1-beta2) * d_l * d_l
-
-        var d_L_mhat = d_L_m / (1 - pow(beta1, i+1))
-        var d_l_mhat = d_l_m / (1 - pow(beta1, i+1))
-
-        var d_L_vhat = d_L_v / (1 - pow(beta2, i+1))
-        var d_l_vhat = d_l_v / (1 - pow(beta2, i+1))
-
-        var L_update = d_L_mhat * inv_sqrt(d_L_vhat)
-        var l_update = d_l_mhat * inv_sqrt(d_l_vhat)
-
-        if i == 99:
-            print(d_L_mhat)
-            print(str(a_L))
-            print(str(L_update))
+        if adam_optimize:
+            adamopt(d_L, d_l, d_L_m, d_l_m, d_L_v, d_l_v, i)
         
-        update_weights(W_L, L_update, a_l)
-        update_weights(W_l, l_update, X)
-        update_biases(B_L, L_update)
-        update_biases(B_l, l_update)
+        update_weights(W_L, d_L, a_l)
+        update_weights(W_l, d_l, X)
+        update_biases(B_L, d_L)
+        update_biases(B_l, d_l)
 
         # calculate batch error
         softmax(a_L)
