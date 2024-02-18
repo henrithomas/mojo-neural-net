@@ -3,12 +3,15 @@ from algorithm import parallelize, vectorize
 from utils.index import Index
 from random import randn, random_si64, seed
 from pathlib import path
-from math import exp
+from math import exp, pow, rsqrt
 from python import Python
 
 alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
 alias mu: Float64 = 0.01
+alias beta1: Float64 = 0.9
+alias beta2: Float64 = 0.99
+alias epsilon: Float64 = 0.00000001
 alias mini_batch_size: Int = 50
 alias epochs: Int = 1
 alias error_target: Float32 = .1
@@ -87,6 +90,19 @@ fn sigmoid(z: Tensor[type]) -> Tensor[type]:
     
     return activations
 
+# 1/sqrt(x + epsilon)
+fn inv_sqrt(z: Tensor[type]) -> Tensor[type]:
+    var second_moments: Tensor[type] = Tensor[type](z.shape())
+
+    @parameter
+    fn compute_rsqrt[simd_width: Int](idx: Int):
+        second_moments.simd_store[simd_width](idx, rsqrt[type, simd_width](epsilon + z.simd_load[simd_width](idx)))
+    
+    vectorize[simdwidth, compute_rsqrt](second_moments.num_elements())
+    
+    return second_moments
+
+
 # sigmoid(z) * (1 - sigmoid(z))
 fn sigmoid_prime(a: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](a.shape()) 
@@ -120,6 +136,29 @@ fn backpropagation(w: Tensor[type], error: Tensor[type], a_prime: Tensor[type]) 
     error_l = a_prime * matmul(error, w_transpose)
 
     return error_l
+
+fn adamopt(inout d_L: Tensor[type], inout d_l: Tensor[type], inout d_L_m: Tensor[type], inout d_l_m: Tensor[type], inout d_L_v: Tensor[type], inout d_l_v: Tensor[type], epoch: Int) raises:
+    d_L_m = beta1 * d_L_m + (1-beta1) * d_L
+    d_l_m = beta1 * d_l_m + (1-beta1) * d_l
+
+    d_L_v = beta2 * d_L_v + (1-beta2) * d_L * d_L
+    d_l_v = beta2 * d_l_v + (1-beta2) * d_l * d_l
+
+    var d_L_mhat = d_L_m / (1 - pow(beta1, epoch+1))
+    var d_l_mhat = d_l_m / (1 - pow(beta1, epoch+1))
+
+    var d_L_vhat = d_L_v / (1 - pow(beta2, epoch+1))
+    var d_l_vhat = d_l_v / (1 - pow(beta2, epoch+1))
+
+    var L_update = d_L_mhat * inv_sqrt(d_L_vhat)
+    var l_update = d_l_mhat * inv_sqrt(d_l_vhat)
+
+    d_L = L_update
+    d_l = l_update
+    # if epoch == 99:
+    #     print(d_L_mhat)
+    #     print(str(a_L))
+    #     print(str(L_update))
 
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
     let a_transpose: Tensor[type] = transpose(a_prev) 
@@ -214,6 +253,8 @@ fn main() raises:
     print("mini-batch size: ", mini_batch_size, " number of epochs: ", epochs)
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
     print("\n\nloading data...")
+
+    let adam_optimize: Bool = True 
     var epoch_error: Float64 = 0.0
     let full_data: Tensor[type] = get_data()
     let output_check: Tensor[type] = get_validation() 
@@ -242,7 +283,17 @@ fn main() raises:
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
+    # EMA means
+    var d_L_m = Tensor[type](a_L_specs)
+    var d_l_m = Tensor[type](a_l_specs)
+
+    # EMA variances
+    var d_L_v = Tensor[type](a_L_specs)
+    var d_l_v = Tensor[type](a_l_specs)
+
     print("\n\ntraining...")
+    if adam_optimize: print("using adam optimization")
+
     @unroll(mini_batch_size)
     for i in range(epochs):
         print("epoch ", (i + 1))
@@ -260,9 +311,9 @@ fn main() raises:
         var d_L = output_error(a_L, validation, a_L_prime)
         var d_l = backpropagation(W_L, d_L, a_l_prime)
 
-        print(str(d_L[0]), str(d_L[15]), str(d_L[35]),)
-        # print(str(d_L))
-
+        if adam_optimize:
+            adamopt(d_L, d_l, d_L_m, d_l_m, d_L_v, d_l_v, i)
+        
         update_weights(W_L, d_L, a_l)
         update_weights(W_l, d_l, X)
         update_biases(B_L, d_L)
