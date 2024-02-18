@@ -283,8 +283,6 @@ fn main() raises:
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
-    let fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1)
-
     # EMA means
     var d_L_m = Tensor[type](a_L_specs)
     var d_l_m = Tensor[type](a_l_specs)
@@ -292,7 +290,7 @@ fn main() raises:
     # EMA variances
     var d_L_v = Tensor[type](a_L_specs)
     var d_l_v = Tensor[type](a_l_specs)
- 
+
     print("\n\ntraining...")
     if adam_optimize: print("using adam optimization")
 
