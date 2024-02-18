@@ -242,12 +242,6 @@ fn main() raises:
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
     var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
 
-
-    # TESTING ONLY
-    var fake_expected: Tensor[type] = randn[type](a_L_specs, 1,1) # Tensor[type](TensorShape(mini_batch_size, output_layer_size))# 
-    # for i in range(fake_expected.num_elements()):
-    #     fake_expected[i] = output_check[Index(19,i)]
- 
     print("\n\ntraining...")
     @unroll(mini_batch_size)
     for i in range(epochs):
