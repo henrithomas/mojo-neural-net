@@ -9,15 +9,15 @@ from linalg import transpose, matmul
 
 alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
-alias mu: Float64 = 0.01
+alias mu: Float64 = 1.2
 alias beta1: Float64 = 0.9
 alias beta2: Float64 = 0.99
 alias epsilon: Float64 = 0.00000001
 alias mini_batch_size: Int = 50
-alias epochs: Int = 1
-alias error_target: Float32 = .1
+alias epochs: Int = 75000
+alias error_target: Float64 = .025
 alias input_layer_size: Int = 16
-alias hidden_layer_size: Int = 52
+alias hidden_layer_size: Int = 30
 alias output_layer_size: Int = 26
 alias data_width: Int = 17
 alias data_size: Int = 20000
@@ -109,10 +109,10 @@ fn adamopt(inout d_L: Tensor[type], inout d_l: Tensor[type], inout d_L_m: Tensor
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
     let a_transpose: Tensor[type] = transpose(a_prev) 
     
-    w = w - mu * matmul(a_transpose, error)
+    w = w - (mu / mini_batch_size) * matmul(a_transpose, error)
 
 fn update_biases(inout b: Tensor[type], error: Tensor[type]) raises:
-    b = b - mu * error
+    b = b - (mu / mini_batch_size) * error
 
 fn softmax(inout a: Tensor[type]):
     var soft: Tensor[type] = Tensor[type](a.shape())
@@ -153,7 +153,6 @@ def get_data() -> Tensor[type]:
     let np = Python.import_module("numpy")
     
     test = np.genfromtxt("letters-data-normalized.txt", np.float64)
-    print(test.shape, test[2])
 
     for i in range(data_size):
         for j in range(data_width):
@@ -186,7 +185,41 @@ fn set_batch_and_validation(indices: Tensor[DType.int64], data: Tensor[type], ch
     # print(str(x))
     # print(str(v))
 
-    pass
+fn get_batch_error(activations: Tensor[type], checker: Tensor[type]) -> Float64:
+    var error: Float64 = 0.0
+    var num_incorrect: Int = 0
+    var a_idx: Int = 0
+    var c_idx: Int = 0
+    var a_max: Float64 = 0.0
+    var c_max: Float64 = 0.0
+
+    for i in range(activations.shape()[0]):
+        # print("activations:")
+        for j in range(activations.shape()[1]):
+            # print(activations[Index(i,j)], j)
+            if activations[Index(i,j)] > a_max:
+                a_max = activations[Index(i,j)]
+                a_idx = j
+        # print("a_max, a_idx:", a_max, a_idx)
+        
+        # print("checker:")
+        for k in range(checker.shape()[1]):
+            # print(checker[Index(i,k)], k)
+            if checker[Index(i,k)] > c_max:
+                c_max = checker[Index(i,k)]
+                c_idx = k
+        # print("c_max, c_idx:", c_max, c_idx)
+
+        if a_idx != c_idx:
+            num_incorrect += 1
+
+        a_idx = 0
+        c_idx = 0
+        a_max = 0.0
+        c_max = 0.0
+     
+    error = num_incorrect / mini_batch_size
+    return error
 
 # input activations
 # feed forward
@@ -201,7 +234,7 @@ fn main() raises:
     print("\n\nloading data...")
 
     let adam_optimize: Bool = False 
-    var epoch_error: Float64 = 0.0
+    var batch_error: Float64 = 1.0
     let full_data: Tensor[type] = get_data()
     let output_check: Tensor[type] = get_validation() 
 
@@ -240,10 +273,10 @@ fn main() raises:
     print("\n\ntraining...")
     if adam_optimize: print("using adam optimization")
 
-    @unroll(mini_batch_size)
-    for i in range(epochs):
-        print("epoch ", (i + 1))
-
+    # @unroll(mini_batch_size)
+    # for i in range(epochs):
+    var i = 0
+    while batch_error > error_target:
         get_inidices(batch_indices)
         set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
 
@@ -267,7 +300,15 @@ fn main() raises:
 
         # calculate batch error
         softmax(a_L)
+        batch_error = get_batch_error(a_L, validation)
+        if i % 5000 == 0:
+            print("epoch ", (i + 1))
+            print("batch error: ", (batch_error * 100),"%")
 
         seed()
+        if batch_error <= error_target:
+            print("epoch ", (i + 1))
+            print("batch error: ", (batch_error * 100),"%")
+        i += 1
 
     print("done")
