@@ -9,15 +9,15 @@ from linalg import transpose, matmul
 
 alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
-alias mu: Float64 = .5
+alias mu: Float64 = .1
 alias beta1: Float64 = 0.9
 alias beta2: Float64 = 0.99
 alias epsilon: Float64 = 0.00000001
-alias mini_batch_size: Int = 50
+alias mini_batch_size: Int = 25
 alias epochs: Int = 75000
 alias error_target: Float64 = .05
 alias input_layer_size: Int = 16
-alias hidden_layer_size: Int = 30
+alias hidden_layer_size: Int = 32
 alias output_layer_size: Int = 26
 alias data_width: Int = 17
 alias data_size: Int = 20000
@@ -101,10 +101,6 @@ fn adamopt(inout d_L: Tensor[type], inout d_l: Tensor[type], inout d_L_m: Tensor
 
     d_L = L_update
     d_l = l_update
-    # if epoch == 99:
-    #     print(d_L_mhat)
-    #     print(str(a_L))
-    #     print(str(L_update))
 
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
     let a_transpose: Tensor[type] = transpose(a_prev) 
@@ -182,8 +178,6 @@ fn set_batch_and_validation(indices: Tensor[DType.int64], data: Tensor[type], ch
             v_letter = data[Index(indices[i],0)].to_int()
             v[Index(i,k)] = checker[Index(v_letter,k)]
 
-    # print(str(x))
-    # print(str(v))
 
 fn get_batch_error(activations: Tensor[type], checker: Tensor[type]) -> Float64:
     var error: Float64 = 0.0
@@ -194,21 +188,14 @@ fn get_batch_error(activations: Tensor[type], checker: Tensor[type]) -> Float64:
     var c_max: Float64 = 0.0
 
     for i in range(activations.shape()[0]):
-        # print("activations:")
         for j in range(activations.shape()[1]):
-            # print(activations[Index(i,j)], j)
             if activations[Index(i,j)] > a_max:
                 a_max = activations[Index(i,j)]
                 a_idx = j
-        # print("a_max, a_idx:", a_max, a_idx)
-        
-        # print("checker:")
         for k in range(checker.shape()[1]):
-            # print(checker[Index(i,k)], k)
             if checker[Index(i,k)] > c_max:
                 c_max = checker[Index(i,k)]
                 c_idx = k
-        # print("c_max, c_idx:", c_max, c_idx)
 
         if a_idx != c_idx:
             num_incorrect += 1
@@ -233,7 +220,7 @@ fn main() raises:
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
     print("\n\nloading data...")
 
-    let adam_optimize: Bool = False 
+    let adam_optimize: Bool = True 
     var batch_error: Float64 = 1.0
     let full_data: Tensor[type] = get_data()
     let output_check: Tensor[type] = get_validation() 
@@ -253,14 +240,22 @@ fn main() raises:
     var batch_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
     var X: Tensor[type] = Tensor[type](X_specs)
     var validation: Tensor[type] = Tensor[type](a_L_specs)
-    # get_inidices(batch_indices)
-    # print(batch_indices)
-    # set_batch_and_validation(batch_indices)
 
     var W_l: Tensor[type] = randn[type](W_l_specs, 0, 1)
+    var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
     var W_L: Tensor[type] = randn[type](W_L_specs, 0, 1)
     var B_l: Tensor[type] = randn[type](B_l_specs, 0, 1)
-    var B_L: Tensor[type] = randn[type](B_L_specs, 0, 1)
+
+    var z_l = Tensor[type](a_l_specs)
+    var a_l = Tensor[type](a_l_specs)
+    var a_l_prime = Tensor[type](a_l_specs)
+
+    var z_L = Tensor[type](a_L_specs)
+    var a_L = Tensor[type](a_L_specs)
+    var a_L_prime = Tensor[type](a_L_specs)
+
+    var d_l = Tensor[type](a_l_specs)
+    var d_L = Tensor[type](a_L_specs)
 
     # EMA means
     var d_L_m = Tensor[type](a_L_specs)
@@ -280,15 +275,15 @@ fn main() raises:
         get_inidices(batch_indices)
         set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
 
-        var z_l = matmul(X, W_l) + B_l
-        var a_l = sigmoid(z_l)
-        var a_l_prime = sigmoid_prime(a_l)
+        z_l = matmul(X, W_l) + B_l
+        a_l = sigmoid(z_l)
+        a_l_prime = sigmoid_prime(a_l)
 
-        var z_L = matmul(a_l, W_L) + B_L
-        var a_L = sigmoid(z_L)
-        var a_L_prime = sigmoid_prime(a_L)
-        var d_L = output_error(a_L, validation, a_L_prime)
-        var d_l = backpropagation(W_L, d_L, a_l_prime)
+        z_L = matmul(a_l, W_L) + B_L
+        a_L = sigmoid(z_L)
+        a_L_prime = sigmoid_prime(a_L)
+        d_L = output_error(a_L, validation, a_L_prime)
+        d_l = backpropagation(W_L, d_L, a_l_prime)
 
         if adam_optimize:
             adamopt(d_L, d_l, d_L_m, d_l_m, d_L_v, d_l_v, i)
@@ -302,13 +297,15 @@ fn main() raises:
         softmax(a_L)
         batch_error = get_batch_error(a_L, validation)
         if i % 5000 == 0:
-            print("epoch ", (i + 1))
+            print("epoch ", i)
             print("batch error: ", (batch_error * 100),"%")
 
         seed()
         if batch_error <= error_target:
-            print("epoch ", (i + 1))
+            print("epoch ", i)
             print("batch error: ", (batch_error * 100),"%")
         i += 1
 
-    print("done")
+    print("training done")
+
+    # test here
