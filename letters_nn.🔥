@@ -9,13 +9,13 @@ from linalg import transpose, matmul
 
 alias type = DType.float64
 alias simdwidth = simdwidthof[type]()
-alias mu: Float64 = 1.2
+alias mu: Float64 = .5
 alias beta1: Float64 = 0.9
 alias beta2: Float64 = 0.99
 alias epsilon: Float64 = 0.00000001
 alias mini_batch_size: Int = 50
 alias epochs: Int = 75000
-alias error_target: Float64 = .025
+alias error_target: Float64 = .05
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 30
 alias output_layer_size: Int = 26
