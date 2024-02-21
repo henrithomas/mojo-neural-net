@@ -14,8 +14,9 @@ alias beta1: Float64 = 0.9
 alias beta2: Float64 = 0.99
 alias epsilon: Float64 = 0.00000001
 alias mini_batch_size: Int = 25
+alias test_batch_size: Int = 100
 alias epochs: Int = 75000
-alias error_target: Float64 = .05
+alias error_target: Float64 = .075
 alias input_layer_size: Int = 16
 alias hidden_layer_size: Int = 32
 alias output_layer_size: Int = 26
@@ -140,9 +141,13 @@ fn softmax(inout a: Tensor[type]):
         for k in range(a.shape()[1]):
             a[Index(i,k)] /= row_sum 
     
-fn get_inidices(inout indices: Tensor[DType.int64]):
+fn set_training_indices(inout indices: Tensor[DType.int64]):
     for i in range(mini_batch_size):
         indices[Index(0,i)] = random_si64(0,training_size)
+
+fn set_test_indices(inout indices: Tensor[DType.int64]):
+    for i in range(test_batch_size):
+        indices[Index(0,1)] = random_si64(training_size + 1, data_size)
 
 def get_data() -> Tensor[type]:
     var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
@@ -272,7 +277,7 @@ fn main() raises:
     # for i in range(epochs):
     var i = 0
     while batch_error > error_target:
-        get_inidices(batch_indices)
+        set_training_indices(batch_indices)
         set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
 
         z_l = matmul(X, W_l) + B_l
@@ -307,5 +312,18 @@ fn main() raises:
         i += 1
 
     print("training done")
-
+    print("\n\ntesting...")
     # test here
+    for i in range(10):
+        set_test_indices(batch_indices)
+        set_batch_and_validation(batch_indices, full_data, output_check, X, validation)
+        z_l = matmul(X, W_l) + B_l
+        a_l = sigmoid(z_l)
+        a_l_prime = sigmoid_prime(a_l)
+
+        z_L = matmul(a_l, W_L) + B_L
+        a_L = sigmoid(z_L)
+        softmax(a_L)
+        batch_error = get_batch_error(a_L, validation)
+
+        print("test error: ", (batch_error * 100),"%")
