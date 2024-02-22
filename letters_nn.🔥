@@ -154,6 +154,7 @@ def get_data() -> Tensor[type]:
     let np = Python.import_module("numpy")
     
     test = np.genfromtxt("letters-data-normalized.txt", np.float64)
+    np.random.shuffle(test)
 
     for i in range(data_size):
         for j in range(data_width):
@@ -303,12 +304,12 @@ fn main() raises:
         batch_error = get_batch_error(a_L, validation)
         if i % 5000 == 0:
             print("epoch ", i)
-            print("batch error: ", (batch_error * 100),"%")
+            print("batch error: ", (batch_error * 100.00),"%")
 
-        seed()
         if batch_error <= error_target:
             print("epoch ", i)
-            print("batch error: ", (batch_error * 100),"%")
+            print("batch error: ", (batch_error * 100.00),"%")
+        seed()
         i += 1
 
     print("training done")
@@ -326,4 +327,5 @@ fn main() raises:
         softmax(a_L)
         batch_error = get_batch_error(a_L, validation)
 
-        print("test error: ", (batch_error * 100),"%")
+        print("test error: ", (batch_error * 100.00),"%")
+        seed()
