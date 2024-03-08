@@ -33,7 +33,7 @@ fn sigmoid(z: Tensor[type]) -> Tensor[type]:
     fn compute_exp[simd_width: Int](idx: Int):
         activations.simd_store[simd_width](idx, (1 / (1 + exp[type, simd_width](-1 * z.simd_load[simd_width](idx)))))
     
-    vectorize[simdwidth, compute_exp](activations.num_elements())
+    vectorize[compute_exp, simdwidth](activations.num_elements())
     
     return activations
 
@@ -45,7 +45,7 @@ fn inv_sqrt(z: Tensor[type]) -> Tensor[type]:
     fn compute_rsqrt[simd_width: Int](idx: Int):
         second_moments.simd_store[simd_width](idx, rsqrt[type, simd_width](epsilon + z.simd_load[simd_width](idx)))
     
-    vectorize[simdwidth, compute_rsqrt](second_moments.num_elements())
+    vectorize[compute_rsqrt, simdwidth](second_moments.num_elements())
     
     return second_moments
 
@@ -60,7 +60,7 @@ fn sigmoid_prime(a: Tensor[type]) raises -> Tensor[type]:
 
 fn sigmoid_prime_full(z: Tensor[type]) raises -> Tensor[type]:
     var sigma_prime: Tensor[type] = Tensor[type](z.shape()) 
-    let sigmoid_z = sigmoid(z)
+    var sigmoid_z = sigmoid(z)
 
     sigma_prime = sigmoid_z * (1 - sigmoid_z)
 
@@ -104,7 +104,7 @@ fn adamopt(inout d_L: Tensor[type], inout d_l: Tensor[type], inout d_L_m: Tensor
     d_l = l_update
 
 fn update_weights(inout w: Tensor[type], error: Tensor[type], a_prev: Tensor[type]) raises:
-    let a_transpose: Tensor[type] = transpose(a_prev) 
+    var a_transpose: Tensor[type] = transpose(a_prev) 
     
     w = w - (mu / mini_batch_size) * matmul(a_transpose, error)
 
@@ -118,7 +118,7 @@ fn softmax(inout a: Tensor[type]):
     fn soft_exp[simd_width: Int](idx: Int):
         a.simd_store[simd_width](idx, exp[type, simd_width](a.simd_load[simd_width](idx)))
 
-    vectorize[simdwidth, soft_exp](a.num_elements())
+    vectorize[soft_exp, simdwidth](a.num_elements())
 
     # @parameter
     # fn softmax_tasks(row: Int):
@@ -151,7 +151,7 @@ fn set_test_indices(inout indices: Tensor[DType.int64]):
 
 def get_data() -> Tensor[type]:
     var data_input = Tensor[type](TensorSpec(type, data_size, data_width))
-    let np = Python.import_module("numpy")
+    var np = Python.import_module("numpy")
     
     test = np.genfromtxt("letters-data-normalized.txt", np.float64)
     np.random.shuffle(test)
@@ -226,22 +226,22 @@ fn main() raises:
     print("input size: ", input_layer_size," hidden layer size: ", hidden_layer_size, " output size: ", output_layer_size)
     print("\n\nloading data...")
 
-    let adam_optimize: Bool = True 
+    var adam_optimize: Bool = True 
     var batch_error: Float64 = 1.0
-    let full_data: Tensor[type] = get_data()
-    let output_check: Tensor[type] = get_validation() 
+    var full_data: Tensor[type] = get_data()
+    var output_check: Tensor[type] = get_validation() 
 
     print("\n\nconfiguring network...")
-    let X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
+    var X_specs = TensorSpec(type, mini_batch_size, input_layer_size)
 
-    let W_l_specs = TensorSpec(type, input_layer_size, hidden_layer_size)
-    let W_L_specs = TensorSpec(type, hidden_layer_size, output_layer_size)
+    var W_l_specs = TensorSpec(type, input_layer_size, hidden_layer_size)
+    var W_L_specs = TensorSpec(type, hidden_layer_size, output_layer_size)
 
-    let a_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
-    let a_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
+    var a_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
+    var a_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
-    let B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
-    let B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
+    var B_l_specs = TensorSpec(type, mini_batch_size, hidden_layer_size)
+    var B_L_specs = TensorSpec(type, mini_batch_size, output_layer_size)
 
     var batch_indices: Tensor[DType.int64] = Tensor[DType.int64](TensorShape(1, mini_batch_size)) 
     var X: Tensor[type] = Tensor[type](X_specs)
